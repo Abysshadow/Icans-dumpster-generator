@@ -1,13 +1,41 @@
 // /api/animate-status.js
+//
 // Polls a Veo operation for completion. Called repeatedly by the client until done.
 //
-// Veo's response shape has changed across API versions, so we look for the video URI
-// in several known paths to be defensive.
+// SECURITY HARDENED:
+// - API key passed as x-goog-api-key header on operation status checks
+// - All error messages sanitized before being sent to the browser
+// - Detailed errors logged server-side for debugging (Vercel logs only)
 //
-// Returns one of:
-//   { done: false }                            → still working, poll again
-//   { done: true, url: "data:video/mp4..." }   → finished, here's the video
-//   { done: true, error: "..." }               → failed, here's why
+// NOTE: The Google Files API (used to download finished videos) still requires
+// the key as a URL query parameter. We pass it there because that fetch is server-to-server
+// only and the URL is never echoed back to the browser.
+
+/* ──────────────────────────────────────────────
+   SECURITY HELPERS
+   ────────────────────────────────────────────── */
+
+function sanitizeError(message) {
+  if (!message || typeof message !== "string") return "An error occurred.";
+  return message
+    .replace(/AIza[A-Za-z0-9_-]{35,}/g, "[REDACTED_KEY]")
+    .replace(/AQ\.[A-Za-z0-9_-]{40,}/g, "[REDACTED_KEY]")
+    .replace(/[?&]key=[^&\s]+/g, "")
+    .replace(/Bearer\s+[A-Za-z0-9_.-]+/gi, "Bearer [REDACTED]");
+}
+
+function logServerError(label, data) {
+  try {
+    const str = typeof data === "string" ? data : JSON.stringify(data);
+    console.error(label, sanitizeError(str).slice(0, 1000));
+  } catch {
+    console.error(label, "[unserializable error data]");
+  }
+}
+
+/* ──────────────────────────────────────────────
+   MAIN HANDLER
+   ────────────────────────────────────────────── */
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -16,7 +44,9 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: "Server is missing the Gemini API key." });
+    return res.status(500).json({
+      error: "Server is missing the Gemini API key. Contact support."
+    });
   }
 
   const { operationName } = req.body || {};
@@ -24,37 +54,35 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "operationName is required." });
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/${operationName}?key=${apiKey}`;
+  // Key is NOT in the URL — passed via header below
+  const url = `https://generativelanguage.googleapis.com/v1beta/${operationName}`;
 
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, {
+      headers: {
+        "x-goog-api-key": apiKey,  // ← Key in header, NOT in URL
+      },
+    });
     const data = await r.json();
 
     if (!r.ok) {
-      console.error("Veo status error:", JSON.stringify(data));
-      const msg = data?.error?.message || `Status check returned ${r.status}`;
-      return res.status(r.status).json({ error: msg });
+      logServerError("Veo status error:", data);
+      const userMessage = sanitizeError(data?.error?.message) || `Status check failed (status ${r.status}).`;
+      return res.status(r.status).json({ error: userMessage });
     }
 
-    // Not done yet
     if (!data.done) {
       return res.status(200).json({ done: false });
     }
 
-    // Failed
     if (data.error) {
+      logServerError("Veo job failed:", data.error);
       return res.status(200).json({
         done: true,
-        error: data.error.message || "Video generation failed.",
+        error: sanitizeError(data.error.message) || "Video generation failed.",
       });
     }
 
-    // Done — find the video. Veo's response shape varies, so we look in several places.
-    // Known paths from various docs / API versions:
-    //   data.response.generateVideoResponse.generatedSamples[0].video.uri
-    //   data.response.generatedVideos[0].video.uri
-    //   data.response.videos[0].uri
-    //   data.response.predictions[0].videoUri
     const resp = data.response || {};
 
     let videoUri = null;
@@ -74,25 +102,25 @@ export default async function handler(req, res) {
     }
 
     if (!videoUri) {
-      // Log the full response so we can see what Veo actually returned
-      console.error("No video URI found. Veo response:", JSON.stringify(data).slice(0, 1500));
+      logServerError("No video URI in completed operation:", data);
       return res.status(200).json({
         done: true,
-        error: "Veo finished but didn't return a video URI in any known field. The Veo API response format may have changed. Check Vercel logs.",
+        error: "The video finished but couldn't be retrieved. Please try again.",
       });
     }
 
-    // Fetch the actual video bytes from the Files API URL
+    // Fetch the actual video bytes. The Files API requires the key as a query param,
+    // but this fetch is server-to-server only — the URL never reaches the browser.
     const fetchUrl = videoUri.includes("?")
       ? `${videoUri}&key=${apiKey}`
       : `${videoUri}?key=${apiKey}`;
 
     const videoRes = await fetch(fetchUrl);
     if (!videoRes.ok) {
-      console.error("Failed to fetch video from Veo:", videoRes.status);
+      logServerError("Failed to fetch video from Veo:", { status: videoRes.status });
       return res.status(200).json({
         done: true,
-        error: `Could not download the finished video (status ${videoRes.status}).`,
+        error: "Could not download the finished video. Please try again.",
       });
     }
 
@@ -102,9 +130,9 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ done: true, url: dataUrl });
   } catch (err) {
-    console.error("Status handler crashed:", err);
+    logServerError("Status handler crashed:", err.message || err);
     return res.status(500).json({
-      error: err.message || "Internal server error during status check."
+      error: "Animation status check failed. Please try again."
     });
   }
 }

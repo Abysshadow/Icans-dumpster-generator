@@ -1,11 +1,38 @@
 // /api/animate.js
+//
 // Kicks off a Google Veo 3.1 Fast image-to-video generation job (8-second clips).
 // Returns the operation name immediately — the client polls /api/animate-status to get the result.
 //
-// IMPORTANT: Veo 3.1 only supports 8-second clips. Earlier we tried 4s but Veo silently
-// produced weird results or hung. Stick with 8s as the spec requires.
-//
-// Cost: ~$0.40 per 8-second clip with Veo Fast (vs ~$1.50 for full Veo 3.1).
+// SECURITY HARDENED:
+// - API key passed as x-goog-api-key header (never in URL)
+// - All error messages sanitized before being sent to the browser
+// - Detailed errors logged server-side for debugging (Vercel logs only)
+
+/* ──────────────────────────────────────────────
+   SECURITY HELPERS
+   ────────────────────────────────────────────── */
+
+function sanitizeError(message) {
+  if (!message || typeof message !== "string") return "An error occurred.";
+  return message
+    .replace(/AIza[A-Za-z0-9_-]{35,}/g, "[REDACTED_KEY]")
+    .replace(/AQ\.[A-Za-z0-9_-]{40,}/g, "[REDACTED_KEY]")
+    .replace(/[?&]key=[^&\s]+/g, "")
+    .replace(/Bearer\s+[A-Za-z0-9_.-]+/gi, "Bearer [REDACTED]");
+}
+
+function logServerError(label, data) {
+  try {
+    const str = typeof data === "string" ? data : JSON.stringify(data);
+    console.error(label, sanitizeError(str).slice(0, 1000));
+  } catch {
+    console.error(label, "[unserializable error data]");
+  }
+}
+
+/* ──────────────────────────────────────────────
+   MAIN HANDLER
+   ────────────────────────────────────────────── */
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -15,7 +42,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
-      error: "Server is missing the Gemini API key. Add GEMINI_API_KEY in Vercel and redeploy."
+      error: "Server is missing the Gemini API key. Contact support."
     });
   }
 
@@ -26,19 +53,18 @@ export default async function handler(req, res) {
   }
 
   if (!image || typeof image !== "string" || !image.startsWith("data:")) {
-    return res.status(400).json({ error: "A starting image is required (must be a data URL)." });
+    return res.status(400).json({ error: "A starting image is required." });
   }
 
-  // Parse the image data URL
   const match = image.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) {
-    return res.status(400).json({ error: "Invalid image format. Expected a base64 data URL." });
+    return res.status(400).json({ error: "Invalid image format." });
   }
   const [, mimeType, base64] = match;
 
-  // Veo 3.1 Fast — 8 seconds (Veo's only supported duration), 16:9.
   const modelId = "veo-3.1-fast-generate-preview";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:predictLongRunning?key=${apiKey}`;
+  // Key is NOT in the URL — passed via header below
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:predictLongRunning`;
 
   const body = {
     instances: [{
@@ -57,30 +83,32 @@ export default async function handler(req, res) {
   try {
     const r = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,  // ← Key in header, NOT in URL
+      },
       body: JSON.stringify(body),
     });
 
     const data = await r.json();
 
     if (!r.ok) {
-      console.error("Veo API error:", JSON.stringify(data));
-      const msg = data?.error?.message || `Veo API returned status ${r.status}`;
-      return res.status(r.status).json({ error: msg });
+      logServerError("Veo API error:", data);
+      const userMessage = sanitizeError(data?.error?.message) || `Animation request failed (status ${r.status}).`;
+      return res.status(r.status).json({ error: userMessage });
     }
 
-    // Veo returns an operation name like "models/veo-3.1-.../operations/abc123"
     const operationName = data?.name;
     if (!operationName) {
-      console.error("No operation name in Veo response:", JSON.stringify(data));
-      return res.status(500).json({ error: "Veo did not return an operation handle." });
+      logServerError("No operation name in Veo response:", data);
+      return res.status(500).json({ error: "The animation service did not respond as expected." });
     }
 
     return res.status(200).json({ operationName });
   } catch (err) {
-    console.error("Animate handler crashed:", err);
+    logServerError("Animate handler crashed:", err.message || err);
     return res.status(500).json({
-      error: err.message || "Internal server error. Check Vercel function logs for details."
+      error: "Animation could not be started. Please try again."
     });
   }
 }

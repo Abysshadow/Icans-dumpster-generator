@@ -1,15 +1,41 @@
 // /api/generate.js
+//
 // Vercel serverless function that calls Google's Gemini API for image generation.
-// Uses Nano Banana Flash (gemini-2.5-flash-image) by default — fast, reliable, and
-// stays well under Vercel's 60-second free-plan timeout.
-// Quality is excellent for dumpster generation; the small visual difference vs Pro
-// isn't worth the timeout risk on a free Vercel plan.
 //
-// Pro mode (gemini-3-pro-image-preview) is available but should only be enabled by
-// users on Vercel Pro plan since it can take 60-90 seconds.
-//
-// Returns the image as base64 so it never expires and works on any network.
-// If a logo data URL is provided, it's passed to Gemini as a reference image.
+// SECURITY HARDENED:
+// - API key passed as x-goog-api-key header (never in URL)
+// - All error messages sanitized before being sent to the browser
+// - Detailed errors logged server-side for debugging (Vercel logs only)
+
+/* ──────────────────────────────────────────────
+   SECURITY HELPERS
+   ────────────────────────────────────────────── */
+
+// Removes anything that looks like an API key or credential from a string.
+// Used to sanitize error messages before they reach the browser.
+function sanitizeError(message) {
+  if (!message || typeof message !== "string") return "An error occurred.";
+  return message
+    .replace(/AIza[A-Za-z0-9_-]{35,}/g, "[REDACTED_KEY]")        // Legacy Gemini keys
+    .replace(/AQ\.[A-Za-z0-9_-]{40,}/g, "[REDACTED_KEY]")         // New-format Gemini keys
+    .replace(/[?&]key=[^&\s]+/g, "")                              // Key in URL query
+    .replace(/Bearer\s+[A-Za-z0-9_.-]+/gi, "Bearer [REDACTED]"); // OAuth tokens
+}
+
+// Logs detailed errors to server-side logs (Vercel) without exposing them to browser.
+// Strips any API key from logged data as a belt-and-suspenders measure.
+function logServerError(label, data) {
+  try {
+    const str = typeof data === "string" ? data : JSON.stringify(data);
+    console.error(label, sanitizeError(str).slice(0, 1000));
+  } catch {
+    console.error(label, "[unserializable error data]");
+  }
+}
+
+/* ──────────────────────────────────────────────
+   MAIN HANDLER
+   ────────────────────────────────────────────── */
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -19,7 +45,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
-      error: "Server is missing the Gemini API key. Add GEMINI_API_KEY in Vercel and redeploy."
+      error: "Server is missing the Gemini API key. Contact support."
     });
   }
 
@@ -29,19 +55,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "A prompt of at least 10 characters is required." });
   }
 
-  // Map quality to model:
-  //   "standard"   → Flash (fast, free-plan friendly, default)
-  //   "hd"         → Flash with a more detailed prompt suffix
-  //   "pro"        → Pro (slow, only safe on Vercel Pro plan)
-  // Both standard and HD use Flash because Flash is reliable on the free plan.
-  // The visual quality difference is negligible for our use case.
   const modelId = quality === "pro"
     ? "gemini-3-pro-image-preview"
     : "gemini-2.5-flash-image";
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
+  // Key is NOT in the URL — passed via header below
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`;
 
-  // Build the parts array — text always first, then optional logo image
   const parts = [{ text: prompt }];
 
   if (logo && typeof logo === "string" && logo.startsWith("data:")) {
@@ -67,16 +87,19 @@ export default async function handler(req, res) {
   try {
     const r = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,  // ← Key in header, NOT in URL
+      },
       body: JSON.stringify(body),
     });
 
     const data = await r.json();
 
     if (!r.ok) {
-      console.error("Gemini API error:", JSON.stringify(data));
-      const msg = data?.error?.message || `Gemini API returned status ${r.status}`;
-      return res.status(r.status).json({ error: msg });
+      logServerError("Gemini API error:", data);
+      const userMessage = sanitizeError(data?.error?.message) || `Image generation failed (status ${r.status}).`;
+      return res.status(r.status).json({ error: userMessage });
     }
 
     const respParts = data?.candidates?.[0]?.content?.parts || [];
@@ -84,9 +107,9 @@ export default async function handler(req, res) {
 
     if (!imgPart) {
       const textPart = respParts.find(p => p.text);
-      console.error("No image in Gemini response:", JSON.stringify(data).slice(0, 500));
+      logServerError("No image in Gemini response:", data);
       return res.status(500).json({
-        error: textPart?.text || "Gemini returned no image. Try rephrasing the prompt."
+        error: sanitizeError(textPart?.text) || "The image could not be generated. Try rephrasing the prompt."
       });
     }
 
@@ -96,9 +119,9 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ url: dataUrl, model: modelId });
   } catch (err) {
-    console.error("Generate handler crashed:", err);
+    logServerError("Generate handler crashed:", err.message || err);
     return res.status(500).json({
-      error: err.message || "Internal server error. Check Vercel function logs for details."
+      error: "Image generation failed. Please try again."
     });
   }
 }
