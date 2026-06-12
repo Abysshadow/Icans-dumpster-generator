@@ -1,257 +1,247 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
-/* ── GREEN/WHITE THEME ── */
-const GREEN = "#2e7d32";
-const BORDER = "#c8e6c9";
-const BG = "#f5f5f5";
-const WHITE = "#ffffff";
-const TEXT = "#333333";
-const TEXT_LIGHT = "#666666";
-const TEXT_MUTED = "#999999";
+/* ──────────────────────────────────────────────
+   THEME
+   ────────────────────────────────────────────── */
 
-const inputStyle = {
-  padding: "10px 12px", border: `1px solid #ddd`, borderRadius: "6px", fontSize: "15px",
-  background: WHITE, color: TEXT, outline: "none", width: "100%", boxSizing: "border-box",
+const C = {
+  green:      "#1f6f3d",
+  greenDark:  "#143d22",
+  greenLight: "#e8f3ec",
+  ink:        "#0f172a",
+  charcoal:   "#334155",
+  muted:      "#64748b",
+  mist:       "#e2e8f0",
+  cream:      "#f8fafc",
+  white:      "#ffffff",
+  danger:     "#dc2626",
+  warning:    "#f59e0b",
 };
-const labelStyle = {
-  display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", fontWeight: 600,
-  color: TEXT_LIGHT, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "14px",
+
+const F = {
+  body: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
 };
 
-// Standard dumpster dimensions (length x width x height in feet)
-const DUMPSTER_SIZES = [
-  { yd: 10, dims: "12 x 8 x 3.5", label: "10 YD" },
-  { yd: 15, dims: "16 x 8 x 4",   label: "15 YD" },
-  { yd: 20, dims: "22 x 8 x 4",   label: "20 YD" },
-  { yd: 30, dims: "22 x 8 x 6",   label: "30 YD" },
-  { yd: 40, dims: "22 x 8 x 8",   label: "40 YD" },
-  { yd: "custom", dims: "", label: "Custom" },
+/* ──────────────────────────────────────────────
+   PRESETS
+   ────────────────────────────────────────────── */
+
+const SIZES = [
+  { yd: 10, label: "10",     dims: "12 × 8 × 3.5" },
+  { yd: 15, label: "15",     dims: "16 × 8 × 4" },
+  { yd: 20, label: "20",     dims: "22 × 8 × 4" },
+  { yd: 30, label: "30",     dims: "22 × 8 × 6" },
+  { yd: 40, label: "40",     dims: "22 × 8 × 8" },
 ];
 
-const PRESET_SCENES = [
-  { id: "construction", label: "🏗️ Construction Site", prompt: "parked at an active residential construction site with stacks of lumber and a half-built house in the background, mid-morning sun, professional photography" },
-  { id: "driveway",     label: "🏡 Suburban Driveway",  prompt: "sitting on a clean asphalt driveway in front of a tidy suburban home with a manicured lawn, bright daylight, clear blue sky" },
-  { id: "sunset",       label: "🌅 Sunset Hero Shot",   prompt: "hero shot at golden hour with dramatic warm sunset lighting, cinematic angle, slight low perspective, rim lighting on the dumpster edges" },
-  { id: "commercial",   label: "🏢 Commercial Lot",     prompt: "in a clean paved commercial parking lot next to a modern office building, professional corporate setting, bright overcast lighting" },
-  { id: "renovation",   label: "🔨 Home Renovation",    prompt: "in a homeowner's driveway during a renovation project, with some demolition debris being loaded in, family home setting, daytime" },
-  { id: "studio",       label: "📸 Studio Product",     prompt: "studio product photography on a seamless light gray background, professional three-point lighting, no shadows on the floor, catalog-style shot" },
-  { id: "blank",        label: "⬜ Plain Background",   prompt: "isolated on a pure plain white background, completely empty surroundings, clean product photography style, soft even studio lighting, no shadows or reflections, no scenery, no environment, no objects in the background" },
+const SCENES = [
+  { id: "studio",       label: "Studio",        emoji: "🎬" },
+  { id: "driveway",     label: "Driveway",      emoji: "🏡" },
+  { id: "construction", label: "Construction",  emoji: "🏗️" },
+  { id: "sunset",       label: "Sunset",        emoji: "🌅" },
+  { id: "commercial",   label: "Commercial lot",emoji: "🏢" },
+  { id: "renovation",   label: "Renovation",    emoji: "🔨" },
+  { id: "plain",        label: "Plain",         emoji: "⬜" },
 ];
 
-const ANIMATION_PRESETS = [
-  // ✨ CINEMAGRAPH STYLE — only one or two elements move, rest stays still
-  { id: "cinemagraph", group: "subtle", label: "✨ Living Photo (Subtle)", prompt: "Cinemagraph effect: the dumpster stays completely still and frozen, only the surrounding environment moves subtly — clouds drifting slowly across the sky, gentle breeze rustling nearby leaves or grass. The dumpster itself does not move at all. Photorealistic, very subtle motion only, like an animated photograph." },
-  { id: "lightshift",  group: "subtle", label: "🌤️ Shifting Light",        prompt: "Cinemagraph effect: the dumpster remains perfectly still, only the lighting changes — sunlight gently shifts across the dumpster as if clouds are passing overhead, soft shadows moving slowly. No camera movement, no other motion. Like a living photograph." },
-  { id: "drone",       group: "subtle", label: "🛸 Cinematic Pan",         prompt: "Slow smooth cinematic camera movement around the static dumpster, gentle dolly or drone-like motion, the dumpster itself does not move, only the camera. Professional cinematography, subtle parallax effect." },
+const SCENE_PROMPTS = {
+  studio:       "Professional studio shot with seamless light gray background, soft even lighting from above, no shadows on the floor, product photography style.",
+  driveway:     "Parked on a clean residential suburban driveway during the day, manicured lawn visible, single-family home blurred softly in the background, natural sunlight.",
+  construction: "On a busy active construction site, bare framing of a house visible in background, tools and materials nearby, dust in the air, golden hour light.",
+  sunset:       "Hero shot at golden-hour sunset, warm orange and pink sky, dramatic cinematic lighting, subtle lens flare, shot from a low angle to make the dumpster look heroic.",
+  commercial:   "In an empty commercial parking lot next to a small strip mall or office building, midday lighting, clean asphalt, professional setting.",
+  renovation:   "Outside a home that's clearly mid-renovation, with some old siding or roofing materials neatly stacked next to the dumpster, suburban setting, daytime.",
+  plain:        "Plain solid white background, soft even studio lighting, no environment, isolated product shot.",
+};
 
-  // 🎬 ACTION STYLE — full motion, real video
-  { id: "worker",     group: "action", label: "👷 Worker Throws Trash",    prompt: "A construction worker walks up to the dumpster and tosses a black trash bag into it. The bag arcs through the air and lands inside. Realistic motion, photorealistic." },
-  { id: "excavator",  group: "action", label: "🚜 Excavator Dumping",       prompt: "A small excavator scoops up construction debris and dumps it into the dumpster, dust and small debris flying briefly. Realistic motion, photorealistic." },
-  { id: "truck",      group: "action", label: "🚛 Truck Hooks Up",          prompt: "A roll-off truck slowly backs up toward the stationary dumpster and begins to hook onto it. Smooth, realistic motion." },
-];
+const ANIM_PRESETS = {
+  subtle: [
+    { id: "living-photo",   label: "Living Photo",   emoji: "✨",  prompt: "Cinemagraph style: the dumpster stays perfectly still, only subtle ambient motion in the background like gently swaying leaves, drifting clouds, or a soft breeze through grass. The dumpster itself does not move." },
+    { id: "shifting-light", label: "Shifting Light", emoji: "🌤️", prompt: "Cinemagraph style: dumpster stays completely still while light gradually shifts as if clouds are passing overhead, soft shadows moving slowly across the dumpster's surface. No other motion." },
+    { id: "cinematic-pan",  label: "Cinematic Pan",  emoji: "🎥",  prompt: "Slow cinematic camera pan to the right around the stationary dumpster, very subtle and smooth movement, the dumpster itself does not move." },
+  ],
+  action: [
+    { id: "worker-throws",  label: "Worker Throws Trash",emoji: "👷", prompt: "A construction worker in safety gear throws a bag of debris into the dumpster from the side. The dumpster itself stays stationary." },
+    { id: "excavator",      label: "Excavator Dumping",  emoji: "🚜", prompt: "A small excavator scoops up materials and dumps them into the dumpster from above, dust and debris flying. The dumpster stays in place." },
+    { id: "truck-hooks",    label: "Truck Hooks Up",     emoji: "🚛", prompt: "A roll-off truck slowly backs up to the dumpster to hook it up for hauling, the truck moves into position." },
+  ],
+};
+
+const DEFAULTS = {
+  companyName: "OnlyCans",
+  phone:       "(555) 123-4567",
+  bodyColor:   "#FFFFFF",  // white dumpster
+  accentColor: "#89CFF0",  // baby blue text
+  sizeYd:      20,
+};
+
+/* ──────────────────────────────────────────────
+   APP
+   ────────────────────────────────────────────── */
 
 export default function App() {
-  const [companyName, setCompanyName] = useState("ABC Dumpsters");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [primaryColor, setPrimaryColor] = useState("#2e7d32");
-  const [accentColor, setAccentColor] = useState("#ffffff");
-  const [selectedSize, setSelectedSize] = useState(DUMPSTER_SIZES[2]); // default 20 YD
-  const [customSize, setCustomSize] = useState(""); // e.g. "25 YD"
-  const [customDims, setCustomDims] = useState("");
-  const [useCustomDims, setUseCustomDims] = useState(false);
-  const [quality, setQuality] = useState("standard"); // 'standard' | 'pro'
-  const [customPrompt, setCustomPrompt] = useState("");
-  const [activePreset, setActivePreset] = useState(null);
-  const [logoFile, setLogoFile] = useState(null); // File object
-  const [logoPreview, setLogoPreview] = useState(null); // base64 data URL for preview/upload
+  // brand
+  const [companyName, setCompanyName] = useState(DEFAULTS.companyName);
+  const [phone, setPhone]             = useState(DEFAULTS.phone);
+  const [bodyColor, setBodyColor]     = useState(DEFAULTS.bodyColor);
+  const [accentColor, setAccentColor] = useState(DEFAULTS.accentColor);
+  const [logo, setLogo]               = useState(null); // data URL
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [history, setHistory] = useState([]); // { url, prompt, timestamp, meta }
-  const [currentImg, setCurrentImg] = useState(null);
-  const previewRef = useRef(null);
+  // size
+  const [sizeYd, setSizeYd]           = useState(DEFAULTS.sizeYd);
+  const [useCustom, setUseCustom]     = useState(false);
+  const [customL, setCustomL]         = useState(22);
+  const [customW, setCustomW]         = useState(8);
+  const [customH, setCustomH]         = useState(4);
 
-  // Animation state
-  const [showAnimateModal, setShowAnimateModal] = useState(false);
-  const [animationPrompt, setAnimationPrompt] = useState("");
-  const [activeAnimPreset, setActiveAnimPreset] = useState(null);
-  const [animating, setAnimating] = useState(false);
-  const [animationStatus, setAnimationStatus] = useState(""); // user-facing status text
-  const [animationVideo, setAnimationVideo] = useState(null); // { url, gifUrl, prompt, sourceImg }
-  const [animationError, setAnimationError] = useState("");
+  // scene
+  const [sceneId, setSceneId]         = useState("studio");
+  const [customScene, setCustomScene] = useState("");
+
+  // quality
+  const [quality, setQuality]         = useState("standard"); // "standard" | "pro"
+
+  // generation state
+  const [generating, setGenerating]   = useState(false);
+  const [resultImg, setResultImg]     = useState(null); // { url, prompt, meta }
+  const [errorMsg, setErrorMsg]       = useState("");
+
+  // animation state
+  const [animOpen, setAnimOpen]       = useState(false);
+  const [animPrompt, setAnimPrompt]   = useState("");
+  const [animating, setAnimating]     = useState(false);
+  const [animStatus, setAnimStatus]   = useState("");
+  const [animResult, setAnimResult]   = useState(null); // { gifUrl, mp4Url }
+  const [animError, setAnimError]     = useState("");
+  const [gifProgress, setGifProgress] = useState(0);
   const [convertingGif, setConvertingGif] = useState(false);
-  const [gifProgress, setGifProgress] = useState(0); // 0-100
 
-  // Resolved size + dims, handling the "Custom" case
+  /* ─── resolved size for prompts and preview ─── */
   const resolvedSize = useMemo(() => {
-    const isCustom = selectedSize.yd === "custom";
-    const label = isCustom && customSize.trim() ? customSize.trim() : selectedSize.label;
-    const dims = useCustomDims && customDims.trim()
-      ? customDims.trim()
-      : (isCustom ? "" : selectedSize.dims);
-    return { label, dims };
-  }, [selectedSize, customSize, customDims, useCustomDims]);
+    if (useCustom) {
+      return {
+        label: `${customL}×${customW}×${customH} ft`,
+        yd: null,
+        dims: `${customL} × ${customW} × ${customH}`,
+      };
+    }
+    const s = SIZES.find(x => x.yd === sizeYd) || SIZES[2];
+    return { label: `${s.yd} yd`, yd: s.yd, dims: s.dims };
+  }, [useCustom, customL, customW, customH, sizeYd]);
 
-  const sizeLabel = useMemo(() => {
-    return resolvedSize.dims
-      ? `${resolvedSize.label} - ${resolvedSize.dims}`
-      : resolvedSize.label;
-  }, [resolvedSize]);
-
-  const buildFinalPrompt = useCallback((scenePrompt) => {
-    const company = companyName.trim() || "ABC Dumpsters";
-    const phone = phoneNumber.trim();
-
-    const textBlocks = [
-      `the company name "${company}" in large bold letters on the side panel`,
-      phone ? `the phone number "${phone}" below the company name` : null,
-      `the size label "${resolvedSize.label}" prominently displayed on the side panel`,
-    ].filter(Boolean).join(", ");
-
-    // Measuring overlay — dimensions shown on lines outside the dumpster, not on it
-    const measuringLine = resolvedSize.dims
-      ? ` Outside the dumpster, overlay clean technical measuring lines with arrowheads at each end (like architectural drawings or product spec diagrams), labeled with the dimensions "${resolvedSize.dims}" feet (length x width x height). The measuring lines should be thin black or dark gray, drawn outside the dumpster body — NOT painted on the dumpster itself. Do NOT show these dimension numbers anywhere on the dumpster's painted surface.`
-      : "";
-
-    const logoNote = logoPreview
-      ? " A company logo (provided as a reference image) is placed on the side panel of the dumpster, alongside the company name. The logo should be clearly visible, well-positioned, and integrated naturally with the painted surface."
-      : "";
-
-    return `Professional photo of a ${resolvedSize.label} roll-off dumpster${resolvedSize.dims ? `, ${resolvedSize.dims} feet (length x width x height)` : ""}. The dumpster body is painted ${primaryColor} with ${accentColor} text and accents. On the side panel, clearly displayed text reads: ${textBlocks}. The text must be perfectly legible, sharp, and well-spaced.${logoNote}${measuringLine} Scene: ${scenePrompt}. Photorealistic, sharp focus, 16:9 aspect ratio, high detail.`;
-  }, [companyName, phoneNumber, primaryColor, accentColor, resolvedSize, logoPreview]);
-
-  const generate = async (scenePrompt, presetId = null) => {
-    if (!companyName.trim()) {
-      setError("Please enter a company name first.");
+  /* ─── handle logo upload ─── */
+  const onLogoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMsg("Logo must be under 5MB.");
       return;
     }
-    if (!scenePrompt || !scenePrompt.trim()) {
-      setError("Pick a preset scene or write your own description.");
-      return;
-    }
+    const reader = new FileReader();
+    reader.onload = () => setLogo(reader.result);
+    reader.readAsDataURL(file);
+  };
 
-    setLoading(true);
-    setError("");
-    setActivePreset(presetId);
+  /* ─── build the prompt sent to Gemini ─── */
+  const buildPrompt = () => {
+    const sceneText = customScene.trim() || SCENE_PROMPTS[sceneId];
+    const sizeDesc = useCustom
+      ? `${customL} feet long by ${customW} feet wide by ${customH} feet tall`
+      : `${resolvedSize.dims} feet (a ${resolvedSize.yd} yard roll-off dumpster)`;
 
-    const finalPrompt = buildFinalPrompt(scenePrompt);
+    const hasLogo = !!logo;
+
+    return [
+      `A photorealistic image of a single ${sizeDesc} roll-off dumpster.`,
+      `The dumpster body is painted ${bodyColor}.`,
+      hasLogo
+        ? `The provided logo image is placed on the front-facing side panel of the dumpster, well-centered, with the company name "${companyName}" rendered in clean bold sans-serif lettering directly below the logo in the color ${accentColor}.`
+        : `The text "${companyName}" is painted on the front-facing side panel in clean bold sans-serif lettering, color ${accentColor}, well-centered.`,
+      `Below that, the phone number "${phone}" is shown in smaller but still readable sans-serif lettering, same color ${accentColor}.`,
+      `Below that, a clean rectangular badge with the text "${resolvedSize.label.toUpperCase()}" displayed in dark text on a light background.`,
+      ``,
+      `Scene: ${sceneText}`,
+      ``,
+      `Show architectural-style measuring lines OUTSIDE the dumpster — thin arrows along the bottom showing length, and a vertical arrow on the right showing height — with the measurements written as plain text labels (for example "${useCustom ? customL : resolvedSize.dims.split(" × ")[0]} FT" and "${useCustom ? customH : resolvedSize.dims.split(" × ")[2]} FT"). The measurements must be OUTSIDE the dumpster, never painted on it.`,
+      ``,
+      `The dumpster should look real and heavy, sitting flat on the ground. Wide aspect ratio, 16:9, professional commercial photography.`,
+    ].join("\n");
+  };
+
+  /* ─── generate ─── */
+  const generate = async () => {
+    setErrorMsg("");
+    setGenerating(true);
 
     try {
+      const prompt = buildPrompt();
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          quality,
-          logo: logoPreview || null,  // base64 data URL or null
-        }),
+        body: JSON.stringify({ prompt, quality, logo }),
       });
 
-      // Try to parse JSON, but handle the case where the server returned HTML or plain text
       let data;
       const responseText = await res.text();
       try {
         data = JSON.parse(responseText);
       } catch {
-        // Likely a Vercel timeout (status 504 with HTML body)
         if (res.status === 504 || responseText.includes("FUNCTION_INVOCATION_TIMEOUT")) {
           if (quality === "pro") {
-            throw new Error(
-              "Pro quality timed out. Pro takes 60-90 seconds and Vercel's free plan only allows 60 seconds. " +
-              "Try Standard quality instead — it's nearly as good and much more reliable."
-            );
+            throw new Error("Pro quality timed out. Try Standard — it's nearly as good and much more reliable on the free plan.");
           }
-          throw new Error(
-            "The generation timed out. This is unusual for Standard quality. Please try again in a moment."
-          );
+          throw new Error("The generation timed out. Please try again in a moment.");
         }
-        throw new Error(
-          `Server returned an unexpected response (status ${res.status}). ` +
-          `Try again, or check Vercel logs if it keeps happening.`
-        );
+        throw new Error(`Server returned an unexpected response (status ${res.status}).`);
       }
 
       if (!res.ok) {
-        throw new Error(data.error || `Generation failed (status ${res.status})`);
+        throw new Error(data.error || `Generation failed (status ${res.status}).`);
       }
 
-      if (!data.url) {
-        throw new Error("Server response did not include an image URL.");
-      }
-
-      const newItem = {
+      setResultImg({
         url: data.url,
-        prompt: scenePrompt,
-        timestamp: Date.now(),
-        meta: { size: sizeLabel, company: companyName, quality },
-      };
-      setCurrentImg(newItem);
-      setHistory(h => [newItem, ...h].slice(0, 8));
-
-      // On mobile, auto-scroll to the preview so the user can see their new image
-      setTimeout(() => {
-        if (previewRef.current && window.innerWidth <= 900) {
-          previewRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }, 100);
+        prompt,
+        meta: {
+          companyName, phone, sizeLabel: resolvedSize.label, sceneId,
+          quality, timestamp: Date.now(),
+        },
+      });
+      // Clear any previous animation when new image is generated
+      setAnimResult(null);
     } catch (err) {
-      // Network failures (offline, timeout) come through as TypeError
-      const msg = err.name === "TypeError"
-        ? `Network error: ${err.message}. Check your internet connection or try again.`
-        : err.message;
-      setError(msg);
-      console.error("Generation failed:", err);
+      console.error(err);
+      setErrorMsg(err.message || "Generation failed. Please try again.");
     } finally {
-      setLoading(false);
-      setActivePreset(null);
+      setGenerating(false);
     }
   };
 
-  const downloadImg = () => {
-    if (!currentImg) return;
+  /* ─── download current image ─── */
+  const downloadImage = () => {
+    if (!resultImg) return;
     const a = document.createElement("a");
-    a.href = currentImg.url;
-    const safeSize = resolvedSize.label.replace(/\s+/g, "");
-    a.download = `${(companyName || "dumpster").replace(/\s+/g, "-").toLowerCase()}-${safeSize}.png`;
+    a.href = resultImg.url;
+    const safeName = (companyName || "dumpster").replace(/\s+/g, "-").toLowerCase();
+    a.download = `${safeName}-${resolvedSize.label.replace(/\s+/g, "")}-${sceneId}.png`;
     a.click();
   };
 
-  const handleLogoUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please upload an image file (PNG, JPG, etc).");
-      return;
-    }
-    if (file.size > 4 * 1024 * 1024) {
-      setError("Logo file is too large. Please upload a file under 4MB.");
-      return;
-    }
-    setError("");
-    setLogoFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setLogoPreview(reader.result);
-    reader.readAsDataURL(file);
+  /* ─── reset to live preview ─── */
+  const clearResult = () => {
+    setResultImg(null);
+    setAnimResult(null);
+    setAnimError("");
   };
 
-  const removeLogo = () => {
-    setLogoFile(null);
-    setLogoPreview(null);
-  };
+  /* ─── animation logic ─── */
 
-  /* ─── ANIMATION ─── */
-
-  // Convert an MP4 data URL to a GIF blob URL using gif.js + canvas frame extraction.
-  // gif.js is loaded as a global from a script tag in index.html, exposed as window.GIF.
   const convertVideoToGif = (videoUrl) => {
     return new Promise((resolve, reject) => {
-      // Make sure gif.js has loaded from the CDN. It usually has by the time the user
-      // generates their first animation (~1+ minutes after page load), but we check anyway.
       if (typeof window.GIF === "undefined") {
-        reject(new Error("GIF library hasn't loaded yet. Check your internet connection and try again."));
+        reject(new Error("GIF library hasn't loaded yet. Check your internet connection."));
         return;
       }
-
       const video = document.createElement("video");
       video.muted = true;
       video.playsInline = true;
@@ -259,14 +249,10 @@ export default function App() {
       video.src = videoUrl;
 
       video.onloadedmetadata = () => {
-        const duration = Math.min(video.duration || 8, 10); // cap at 10s safety
-
-        // Detect mobile to use lower-memory settings.
-        // Mobile RAM is more constrained, and Safari is finicky about repeated video.seek() calls.
+        const duration = Math.min(video.duration || 8, 10);
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         const fps = isMobile ? 8 : 10;
         const targetWidth = isMobile ? 480 : 640;
-
         const scale = targetWidth / video.videoWidth;
         const targetHeight = Math.round(video.videoHeight * scale);
 
@@ -276,56 +262,36 @@ export default function App() {
         const ctx = canvas.getContext("2d");
 
         const gif = new window.GIF({
-          workers: 2,
-          quality: 10,            // 1 = best, 30 = worst. 10 is a nice balance
-          width: targetWidth,
-          height: targetHeight,
+          workers: 2, quality: 10,
+          width: targetWidth, height: targetHeight,
           workerScript: "/gif.worker.js",
         });
 
-        gif.on("progress", (p) => {
-          // p is 0-1 during the encoding phase (after frames captured)
-          setGifProgress(50 + Math.round(p * 50));
-        });
-
-        gif.on("finished", (blob) => {
-          const gifUrl = URL.createObjectURL(blob);
-          resolve(gifUrl);
-        });
-
+        gif.on("progress", (p) => setGifProgress(50 + Math.round(p * 50)));
+        gif.on("finished", (blob) => resolve(URL.createObjectURL(blob)));
         gif.on("abort", () => reject(new Error("GIF conversion was cancelled.")));
 
-        // Walk through the video frame by frame
-        const frameInterval = 1 / fps;       // seconds between frames
+        const frameInterval = 1 / fps;
         const totalFrames = Math.floor(duration * fps);
         let currentFrame = 0;
 
         const captureNextFrame = () => {
           if (currentFrame >= totalFrames) {
-            // All frames captured — start the encode
             setGifProgress(50);
             gif.render();
             return;
           }
-
-          const targetTime = currentFrame * frameInterval;
-          video.currentTime = targetTime;
+          video.currentTime = currentFrame * frameInterval;
         };
 
         video.onseeked = () => {
-          // Once video has seeked to the requested time, draw it onto the canvas
           ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-          // Add this frame to the gif (delay in ms between frames)
           gif.addFrame(ctx, { copy: true, delay: Math.round(1000 / fps) });
           currentFrame++;
-          // Update capture-phase progress (0-50%)
           setGifProgress(Math.round((currentFrame / totalFrames) * 50));
           captureNextFrame();
         };
-
         video.onerror = () => reject(new Error("Could not load video for GIF conversion."));
-
-        // Kick off the first frame capture
         captureNextFrame();
       };
 
@@ -333,93 +299,54 @@ export default function App() {
     });
   };
 
-  const openAnimateModal = () => {
-    setShowAnimateModal(true);
-    setAnimationError("");
-    setAnimationVideo(null);
-    setAnimationPrompt("");
-    setActiveAnimPreset(null);
-  };
-
-  const closeAnimateModal = () => {
-    if (animating) return; // don't allow closing mid-generation
-    setShowAnimateModal(false);
-  };
-
-  const startAnimation = async (animPrompt, presetId = null) => {
-    if (!currentImg) {
-      setAnimationError("No image to animate.");
+  const startAnimation = async (presetPrompt) => {
+    const finalPrompt = (presetPrompt || animPrompt).trim();
+    if (!finalPrompt || finalPrompt.length < 5) {
+      setAnimError("Please pick a preset or describe the animation.");
       return;
     }
-    if (!animPrompt || !animPrompt.trim()) {
-      setAnimationError("Please pick a preset or write a description.");
+    if (!resultImg) {
+      setAnimError("Generate an image first.");
       return;
     }
 
+    setAnimError("");
     setAnimating(true);
-    setAnimationError("");
-    setAnimationVideo(null);
-    setActiveAnimPreset(presetId);
-    setAnimationStatus("Starting animation job…");
+    setAnimResult(null);
+    setAnimStatus("Starting animation…");
 
     try {
-      // Step 1: Kick off the job
       const startRes = await fetch("/api/animate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: animPrompt.trim(),
-          image: currentImg.url,
-        }),
+        body: JSON.stringify({ prompt: finalPrompt, image: resultImg.url }),
       });
-
-      const startData = await startRes.json().catch(() => ({}));
-      if (!startRes.ok) {
-        throw new Error(startData.error || `Failed to start animation (status ${startRes.status})`);
-      }
+      const startData = await startRes.json();
+      if (!startRes.ok) throw new Error(startData.error || "Failed to start animation.");
 
       const { operationName } = startData;
-      if (!operationName) throw new Error("Server did not return an operation handle.");
-
-      // Step 2: Poll for completion. Veo takes 30-90 seconds typically.
-      setAnimationStatus("Animating your dumpster… this usually takes 1-2 minutes.");
+      setAnimStatus("Animating your dumpster… 1-2 minutes.");
 
       const startTime = Date.now();
-      const maxWaitMs = 5 * 60 * 1000; // 5 minute hard cap
-
       while (true) {
-        const elapsed = Date.now() - startTime;
-        if (elapsed > maxWaitMs) {
-          throw new Error("Animation took too long (over 5 minutes). Please try again.");
-        }
-
-        // Update progress display every iteration
-        const seconds = Math.floor(elapsed / 1000);
-        setAnimationStatus(`Animating your dumpster… ${seconds}s elapsed (typically 60-120s)`);
-
-        // Wait 5 seconds between polls
         await new Promise(r => setTimeout(r, 5000));
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setAnimStatus(`Animating your dumpster… ${elapsed}s elapsed`);
 
         const statusRes = await fetch("/api/animate-status", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ operationName }),
         });
+        const statusData = await statusRes.json();
 
-        const statusData = await statusRes.json().catch(() => ({}));
-        if (!statusRes.ok) {
-          throw new Error(statusData.error || `Status check failed (${statusRes.status})`);
-        }
+        if (!statusRes.ok) throw new Error(statusData.error || "Status check failed.");
 
         if (statusData.done) {
-          if (statusData.error) {
-            throw new Error(statusData.error);
-          }
-          if (!statusData.url) {
-            throw new Error("Animation finished but no video was returned.");
-          }
-          // Veo job complete — now convert the MP4 to a GIF in the browser
-          setAnimationStatus("Converting to GIF…");
+          if (statusData.error) throw new Error(statusData.error);
+          if (!statusData.url) throw new Error("Animation finished but no video was returned.");
+
+          setAnimStatus("Converting to GIF…");
           setConvertingGif(true);
           setGifProgress(0);
 
@@ -427,594 +354,936 @@ export default function App() {
           try {
             gifUrl = await convertVideoToGif(statusData.url);
           } catch (gifErr) {
-            // GIF conversion failed but we still have the MP4 — surface a soft warning
             console.error("GIF conversion failed:", gifErr);
-            setAnimationError(
-              `Video generated successfully, but GIF conversion failed: ${gifErr.message}. You can still view the video.`
-            );
           } finally {
             setConvertingGif(false);
           }
 
-          setAnimationVideo({
-            url: statusData.url,
-            gifUrl: gifUrl,
-            prompt: animPrompt.trim(),
-            sourceImg: currentImg.url,
-            timestamp: Date.now(),
-          });
-          setAnimationStatus("");
+          setAnimResult({ gifUrl, mp4Url: statusData.url });
+          setAnimStatus("");
           break;
         }
+
+        if (elapsed > 300) throw new Error("Animation took too long. Please try again.");
       }
     } catch (err) {
-      console.error("Animation failed:", err);
-      setAnimationError(err.message || "Animation failed.");
-      setAnimationStatus("");
+      console.error(err);
+      setAnimError(err.message || "Animation failed. Please try again.");
+      setAnimStatus("");
     } finally {
       setAnimating(false);
-      setActiveAnimPreset(null);
     }
   };
 
   const downloadAnimation = () => {
-    if (!animationVideo) return;
+    if (!animResult) return;
     const a = document.createElement("a");
-    const safeSize = resolvedSize.label.replace(/\s+/g, "");
     const safeName = (companyName || "dumpster").replace(/\s+/g, "-").toLowerCase();
-    if (animationVideo.gifUrl) {
-      a.href = animationVideo.gifUrl;
-      a.download = `${safeName}-${safeSize}-animation.gif`;
+    if (animResult.gifUrl) {
+      a.href = animResult.gifUrl;
+      a.download = `${safeName}-${resolvedSize.label.replace(/\s+/g, "")}-animation.gif`;
     } else {
-      // Fallback to MP4 if GIF conversion failed
-      a.href = animationVideo.url;
-      a.download = `${safeName}-${safeSize}-animation.mp4`;
+      a.href = animResult.mp4Url;
+      a.download = `${safeName}-${resolvedSize.label.replace(/\s+/g, "")}-animation.mp4`;
     }
     a.click();
   };
 
-  const sectionTitle = {
-    fontSize: "11px", fontWeight: 700, color: GREEN, textTransform: "uppercase",
-    letterSpacing: "0.08em", marginBottom: "10px", marginTop: "20px",
-  };
-  const btnPrimary = {
-    width: "100%", padding: "14px", border: "none", borderRadius: "6px",
-    background: GREEN, color: "white", fontSize: "15px", fontWeight: 700,
-    cursor: "pointer", transition: "all 0.2s",
-  };
-  const btnSecondary = {
-    padding: "10px 14px", border: `1px solid ${BORDER}`, borderRadius: "6px",
-    background: WHITE, color: TEXT, fontSize: "13px", fontWeight: 600,
-    cursor: "pointer", transition: "all 0.15s", textAlign: "left",
-  };
-
-  const formInvalid = !companyName.trim();
+  /* ──────────────────────────────────────────────
+     RENDER
+     ────────────────────────────────────────────── */
 
   return (
-    <div style={{ fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif", background: BG, color: TEXT, minHeight: "100vh" }}>
-      {/* Header */}
-      <div style={{ background: WHITE, borderBottom: `3px solid ${GREEN}`, padding: "14px 24px" }}>
-        <div style={{ fontSize: "18px", fontWeight: 800, color: GREEN, letterSpacing: "0.02em" }}>
-          🚛 iCans Dumpster Image Generator
+    <div style={{
+      height: "100vh", width: "100vw", overflow: "hidden",
+      display: "flex", flexDirection: "column",
+      fontFamily: F.body, color: C.ink, background: C.cream,
+    }}>
+      {/* ── HEADER ── */}
+      <header style={{
+        flex: "0 0 auto",
+        height: "56px",
+        padding: "0 24px",
+        background: C.white,
+        borderBottom: `1px solid ${C.mist}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{
+            width: "28px", height: "28px", borderRadius: "6px",
+            background: C.green, display: "flex", alignItems: "center", justifyContent: "center",
+            color: C.white, fontWeight: 700, fontSize: "14px",
+          }}>iC</div>
+          <div style={{ fontSize: "16px", fontWeight: 700, color: C.green }}>
+            iCans Generator
+          </div>
         </div>
-      </div>
 
-      <div className="layout-grid" style={{ display: "grid", gridTemplateColumns: "440px 1fr", gap: 0, minHeight: "calc(100vh - 53px)" }}>
-        {/* LEFT — Controls */}
-        <div className="controls-pane" style={{ padding: "24px", background: WHITE, borderRight: `1px solid #e0e0e0`, overflowY: "auto", maxHeight: "calc(100vh - 53px)" }}>
-          <h2 style={{ fontSize: "22px", fontWeight: 700, color: TEXT, marginBottom: "4px" }}>Design Your Dumpster</h2>
-          <p style={{ fontSize: "13px", color: TEXT_LIGHT, marginBottom: "20px" }}>
-            Brand your dumpster, pick a scene, and generate a marketing-ready image.
-          </p>
-
-          {/* BRANDING */}
-          <div style={sectionTitle}>1. Branding</div>
-
-          <label style={labelStyle}>Company Name *
-            <input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. ABC Dumpsters" style={inputStyle} />
-          </label>
-
-          <label style={labelStyle}>Phone Number (optional)
-            <input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="(555) 123-4567" style={inputStyle} />
-          </label>
-
-          {/* Logo upload */}
-          <label style={labelStyle}>Logo (optional)
-            {logoPreview ? (
-              <div style={{
-                display: "flex", alignItems: "center", gap: "10px", padding: "10px",
-                border: `1px solid ${BORDER}`, borderRadius: "6px", background: "#f8fafc",
-              }}>
-                <img src={logoPreview} alt="Logo preview" style={{
-                  width: "48px", height: "48px", objectFit: "contain",
-                  background: WHITE, borderRadius: "4px", border: "1px solid #e0e0e0",
-                }} />
-                <div style={{ flex: 1, fontSize: "12px", color: TEXT_LIGHT, overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {logoFile?.name || "Logo uploaded"}
-                </div>
-                <button
-                  type="button"
-                  onClick={removeLogo}
-                  style={{
-                    padding: "6px 10px", border: `1px solid #f5c6cb`, borderRadius: "6px",
-                    background: "#fff5f5", color: "#dc3545", fontSize: "12px", fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={handleLogoUpload}
-                style={{ ...inputStyle, padding: "8px", cursor: "pointer" }}
-              />
-            )}
-          </label>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "8px" }}>
-            <label style={labelStyle}>Dumpster Color
-              <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)}
-                style={{ ...inputStyle, height: "44px", padding: "4px", cursor: "pointer" }} />
-            </label>
-            <label style={labelStyle}>Text/Accent Color
-              <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)}
-                style={{ ...inputStyle, height: "44px", padding: "4px", cursor: "pointer" }} />
-            </label>
-          </div>
-
-          {/* SIZE */}
-          <div style={sectionTitle}>2. Dumpster Size</div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "12px" }}>
-            {DUMPSTER_SIZES.map(s => (
-              <button key={s.yd} onClick={() => setSelectedSize(s)} style={{
-                padding: "10px 6px", border: `2px solid ${selectedSize.yd === s.yd ? GREEN : "#e0e0e0"}`,
-                borderRadius: "6px", background: selectedSize.yd === s.yd ? "#e8f5e9" : WHITE,
-                color: selectedSize.yd === s.yd ? GREEN : TEXT, cursor: "pointer",
-                fontWeight: 700, fontSize: "14px", transition: "all 0.15s",
-              }}>
-                <div>{s.label}</div>
-                <div style={{ fontSize: "10px", fontWeight: 500, color: TEXT_MUTED, marginTop: "2px" }}>
-                  {s.dims || "your size"}
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {selectedSize.yd === "custom" && (
-            <label style={labelStyle}>Custom Size Label
-              <input
-                value={customSize}
-                onChange={e => setCustomSize(e.target.value)}
-                placeholder="e.g. 25 YD"
-                style={inputStyle}
-              />
-            </label>
-          )}
-
-          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: TEXT_LIGHT, marginBottom: "8px", cursor: "pointer" }}>
-            <input type="checkbox" checked={useCustomDims} onChange={e => setUseCustomDims(e.target.checked)} />
-            Use custom dimensions
-          </label>
-          {useCustomDims && (
-            <input
-              value={customDims}
-              onChange={e => setCustomDims(e.target.value)}
-              placeholder="e.g. 22 x 8 x 5"
-              style={inputStyle}
-            />
-          )}
-
-          {/* QUALITY */}
-          <div style={sectionTitle}>3. Quality</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "6px" }}>
-            <button onClick={() => setQuality("standard")} style={{
-              padding: "12px 10px", border: `2px solid ${quality === "standard" ? GREEN : "#e0e0e0"}`,
-              borderRadius: "6px", background: quality === "standard" ? "#e8f5e9" : WHITE,
-              color: quality === "standard" ? GREEN : TEXT, cursor: "pointer",
-              fontWeight: 700, fontSize: "13px", textAlign: "left",
-            }}>
-              <div>Standard</div>
-              <div style={{ fontSize: "11px", fontWeight: 500, color: TEXT_MUTED, marginTop: "2px" }}>Fast & reliable</div>
+        {/* Quality toggle pill */}
+        <div style={{
+          display: "flex",
+          background: C.cream,
+          border: `1px solid ${C.mist}`,
+          borderRadius: "999px",
+          padding: "3px",
+        }}>
+          {["standard", "pro"].map(q => (
+            <button key={q}
+              onClick={() => setQuality(q)}
+              style={{
+                padding: "6px 16px",
+                borderRadius: "999px",
+                border: "none",
+                background: quality === q ? C.white : "transparent",
+                color: quality === q ? C.ink : C.muted,
+                fontSize: "13px", fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: quality === q ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                transition: "all 0.15s",
+              }}
+            >
+              {q === "standard" ? "Standard" : "Pro"}
             </button>
-            <button onClick={() => setQuality("pro")} style={{
-              padding: "12px 10px", border: `2px solid ${quality === "pro" ? GREEN : "#e0e0e0"}`,
-              borderRadius: "6px", background: quality === "pro" ? "#e8f5e9" : WHITE,
-              color: quality === "pro" ? GREEN : TEXT, cursor: "pointer",
-              fontWeight: 700, fontSize: "13px", textAlign: "left",
-            }}>
-              <div>Pro</div>
-              <div style={{ fontSize: "11px", fontWeight: 500, color: TEXT_MUTED, marginTop: "2px" }}>Sharper, slower</div>
-            </button>
-          </div>
-          {quality === "pro" && (
-            <div style={{
-              fontSize: "11px", color: "#92400e", background: "#fef3c7",
-              padding: "8px 10px", borderRadius: "6px", marginBottom: "10px",
-              border: "1px solid #fde68a",
-            }}>
-              ⚠️ Pro can take 60-90 seconds and may time out on Vercel's free plan. Stick with Standard unless you really need it.
-            </div>
-          )}
+          ))}
+        </div>
+      </header>
 
-          {/* SCENE PRESETS */}
-          <div style={sectionTitle}>4. Pick a Scene (one click)</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
-            {PRESET_SCENES.map(p => (
-              <button
-                key={p.id}
-                disabled={loading || formInvalid}
-                onClick={() => generate(p.prompt, p.id)}
-                style={{
-                  ...btnSecondary,
-                  opacity: loading || formInvalid ? 0.5 : 1,
-                  cursor: loading || formInvalid ? "not-allowed" : "pointer",
-                  background: activePreset === p.id ? "#e8f5e9" : WHITE,
-                  borderColor: activePreset === p.id ? GREEN : BORDER,
-                }}
-              >
-                {activePreset === p.id ? "Generating…" : p.label}
-              </button>
-            ))}
-          </div>
-
-          {/* CUSTOM PROMPT */}
-          <div style={sectionTitle}>5. Or Describe Your Own Scene</div>
-          <textarea
-            value={customPrompt}
-            onChange={e => setCustomPrompt(e.target.value)}
-            placeholder="e.g. parked next to a lake at dawn with a small fishing boat in the background, misty atmosphere"
-            style={{ ...inputStyle, minHeight: "90px", resize: "vertical", marginBottom: "10px", fontFamily: "inherit" }}
-            disabled={loading}
+      {/* ── BODY (preview + controls, no scroll) ── */}
+      <div style={{
+        flex: "1 1 auto",
+        display: "flex",
+        minHeight: 0,    // critical: lets children shrink correctly
+      }}>
+        {/* LEFT: Preview */}
+        <div style={{
+          flex: "1 1 auto",
+          minWidth: 0,
+          padding: "24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+        }}>
+          <PreviewCanvas
+            companyName={companyName}
+            phone={phone}
+            bodyColor={bodyColor}
+            accentColor={accentColor}
+            sizeLabel={resolvedSize.label}
+            sceneId={sceneId}
+            generating={generating}
+            resultImg={resultImg}
+            animResult={animResult}
+            errorMsg={errorMsg}
+            onClearResult={clearResult}
+            onDownload={downloadImage}
+            onDownloadAnimation={downloadAnimation}
+            onAnimate={() => setAnimOpen(true)}
           />
-
-          <button
-            onClick={() => generate(customPrompt, "custom")}
-            disabled={loading || formInvalid || !customPrompt.trim()}
-            style={{
-              ...btnPrimary,
-              opacity: loading || formInvalid || !customPrompt.trim() ? 0.5 : 1,
-              cursor: loading || formInvalid || !customPrompt.trim() ? "not-allowed" : "pointer",
-            }}
-          >
-            {loading && activePreset === "custom" ? "Generating…" : "Generate Custom Image"}
-          </button>
-
-          {error && (
-            <div style={{ marginTop: "12px", padding: "10px 12px", background: "#fff5f5", border: "1px solid #f5c6cb",
-              borderRadius: "6px", color: "#dc3545", fontSize: "13px" }}>
-              {error}
-            </div>
-          )}
-
-          <p style={{ fontSize: "11px", color: TEXT_MUTED, marginTop: "16px", lineHeight: 1.5 }}>
-            Tip: Standard quality is fast and reliable. Use Pro only when you need extra-sharp text — it's much slower and may time out.
-          </p>
         </div>
 
-        {/* RIGHT — Preview + History */}
-        <div ref={previewRef} className="preview-pane" style={{ padding: "24px", background: "#fafafa", overflowY: "auto", maxHeight: "calc(100vh - 53px)" }}>
-          <div style={{ background: WHITE, borderRadius: "8px", padding: "20px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: "20px" }}>
-            {loading ? (
-              <div style={{ aspectRatio: "16 / 9", display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f0f0", borderRadius: "6px" }}>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{
-                    width: "40px", height: "40px", margin: "0 auto 12px",
-                    border: `4px solid ${BORDER}`, borderTopColor: GREEN,
-                    borderRadius: "50%", animation: "spin 1s linear infinite",
-                  }} />
-                  <div style={{ fontSize: "16px", fontWeight: 600, color: TEXT }}>
-                    Generating your branded dumpster…
-                  </div>
-                  <div style={{ fontSize: "13px", color: TEXT_LIGHT, marginTop: "4px" }}>
-                    {quality === "pro" ? "Pro quality (~60-90 seconds)" : "Standard quality (~10-20 seconds)"}
-                  </div>
-                </div>
-              </div>
-            ) : currentImg ? (
-              <>
-                <img
-                  src={currentImg.url}
-                  alt="Generated dumpster"
-                  style={{ width: "100%", height: "auto", borderRadius: "6px", display: "block" }}
-                  onError={() => setError("The image was generated but couldn't be displayed. Try generating again, or check the browser console for details.")}
-                />
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px", gap: "10px", flexWrap: "wrap" }}>
-                  <div style={{ fontSize: "13px", color: TEXT_LIGHT, flex: 1, minWidth: "150px" }}>
-                    <strong style={{ color: TEXT }}>{currentImg.meta.company}</strong>
-                    &nbsp;·&nbsp;{currentImg.meta.size}
-                    &nbsp;·&nbsp;{currentImg.meta.quality === "pro" ? "Pro" : "Standard"}
-                  </div>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={openAnimateModal} style={{
-                      padding: "8px 16px", background: WHITE, color: GREEN, border: `2px solid ${GREEN}`,
-                      borderRadius: "6px", fontWeight: 600, fontSize: "13px", cursor: "pointer",
-                    }}>
-                      🎬 Animate
-                    </button>
-                    <button onClick={downloadImg} style={{
-                      padding: "8px 16px", background: GREEN, color: WHITE, border: "none",
-                      borderRadius: "6px", fontWeight: 600, fontSize: "13px", cursor: "pointer",
-                    }}>
-                      ↓ Download
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div style={{ aspectRatio: "16 / 9", display: "flex", alignItems: "center", justifyContent: "center",
-                background: "linear-gradient(135deg, #f5f5f5 0%, #e8f5e9 100%)", borderRadius: "6px",
-                border: `2px dashed ${BORDER}` }}>
-                <div style={{ textAlign: "center", padding: "24px" }}>
-                  <div style={{ fontSize: "48px", marginBottom: "8px" }}>🚛</div>
-                  <div style={{ fontSize: "16px", fontWeight: 600, color: TEXT, marginBottom: "4px" }}>
-                    Your dumpster will appear here
-                  </div>
-                  <div style={{ fontSize: "13px", color: TEXT_LIGHT }}>
-                    Fill in your brand details and pick a scene to start
-                  </div>
-                </div>
+        {/* RIGHT: Controls */}
+        <aside style={{
+          flex: "0 0 380px",
+          minWidth: "320px",
+          maxWidth: "440px",
+          background: C.white,
+          borderLeft: `1px solid ${C.mist}`,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+        }}>
+          {/* Scrollable inner panel (only if needed) */}
+          <div style={{
+            flex: "1 1 auto",
+            overflowY: "auto",
+            padding: "20px 24px",
+          }}>
+            {/* BRAND */}
+            <Label>Brand</Label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
+              <Input value={companyName} onChange={setCompanyName} placeholder="Company name" />
+              <Input value={phone} onChange={setPhone} placeholder="Phone" />
+            </div>
+
+            {/* COLORS */}
+            <Label>Colors</Label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "12px" }}>
+              <ColorField label="Dumpster" value={bodyColor} onChange={setBodyColor} />
+              <ColorField label="Text" value={accentColor} onChange={setAccentColor} />
+            </div>
+
+            {/* LOGO */}
+            <LogoUpload logo={logo} onChange={onLogoChange} onClear={() => setLogo(null)} />
+
+            {/* SIZE */}
+            <Label style={{ marginTop: "16px" }}>Size</Label>
+            <div style={{ display: "flex", gap: "6px", marginBottom: "4px", flexWrap: "wrap" }}>
+              {SIZES.map(s => (
+                <button key={s.yd}
+                  onClick={() => { setSizeYd(s.yd); setUseCustom(false); }}
+                  style={pillStyle(!useCustom && sizeYd === s.yd)}
+                >
+                  {s.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setUseCustom(true)}
+                style={pillStyle(useCustom)}
+              >
+                Custom
+              </button>
+            </div>
+            <div style={{ fontSize: "11px", color: C.muted, marginBottom: "12px" }}>
+              {resolvedSize.label}
+              {!useCustom && ` · ${resolvedSize.dims} ft`}
+            </div>
+
+            {useCustom && (
+              <div style={{
+                background: C.cream, border: `1px solid ${C.mist}`, borderRadius: "8px",
+                padding: "10px", marginBottom: "16px",
+                display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px",
+              }}>
+                <DimensionInput label="L (ft)" value={customL} onChange={setCustomL} />
+                <DimensionInput label="W (ft)" value={customW} onChange={setCustomW} />
+                <DimensionInput label="H (ft)" value={customH} onChange={setCustomH} />
               </div>
             )}
+
+            {/* SCENE */}
+            <Label style={{ marginTop: useCustom ? 0 : "4px" }}>Scene</Label>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px" }}>
+              {SCENES.map(s => (
+                <button key={s.id}
+                  onClick={() => setSceneId(s.id)}
+                  style={pillStyle(sceneId === s.id)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {/* CUSTOM SCENE */}
+            <Label small>Or describe a scene</Label>
+            <textarea
+              value={customScene}
+              onChange={(e) => setCustomScene(e.target.value)}
+              placeholder="Parked by a lake at dawn, misty…"
+              rows={2}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                border: `1px solid ${C.mist}`,
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontFamily: F.body,
+                resize: "none",
+                outline: "none",
+                background: C.white,
+                color: C.ink,
+                boxSizing: "border-box",
+              }}
+              onFocus={(e) => e.target.style.borderColor = C.green}
+              onBlur={(e) => e.target.style.borderColor = C.mist}
+            />
           </div>
 
-          {history.length > 0 && (
-            <div>
-              <div style={{ fontSize: "13px", fontWeight: 700, color: TEXT, marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                Recent Generations
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
-                {history.map((h, i) => (
-                  <button key={i} onClick={() => setCurrentImg(h)} style={{
-                    border: currentImg?.timestamp === h.timestamp ? `3px solid ${GREEN}` : `1px solid #e0e0e0`,
-                    borderRadius: "6px", padding: 0, overflow: "hidden", cursor: "pointer", background: WHITE,
-                    aspectRatio: "16 / 9",
-                  }}>
-                    <img src={h.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+          {/* GENERATE BUTTON (fixed bottom of panel) */}
+          <div style={{
+            flex: "0 0 auto",
+            padding: "16px 24px",
+            borderTop: `1px solid ${C.mist}`,
+            background: C.white,
+          }}>
+            <button
+              onClick={generate}
+              disabled={generating || !companyName.trim()}
+              style={{
+                width: "100%",
+                padding: "12px",
+                background: (generating || !companyName.trim()) ? C.muted : C.green,
+                color: C.white,
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "15px",
+                fontWeight: 600,
+                cursor: (generating || !companyName.trim()) ? "not-allowed" : "pointer",
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={(e) => { if (!generating && companyName.trim()) e.currentTarget.style.background = C.greenDark; }}
+              onMouseLeave={(e) => { if (!generating && companyName.trim()) e.currentTarget.style.background = C.green; }}
+            >
+              {generating ? "Generating…" : resultImg ? "Generate again" : "Generate image"}
+            </button>
+          </div>
+        </aside>
       </div>
 
-      {/* ─── ANIMATE MODAL ─── */}
-      {showAnimateModal && (
-        <div
-          onClick={closeAnimateModal}
-          style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
-            zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "20px",
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: WHITE, borderRadius: "12px", padding: "24px",
-              maxWidth: "560px", width: "100%", maxHeight: "90vh", overflowY: "auto",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <h3 style={{ fontSize: "20px", fontWeight: 700, color: TEXT, margin: 0 }}>
-                🎬 Animate Your Dumpster
-              </h3>
-              {!animating && (
-                <button onClick={closeAnimateModal} style={{
-                  width: "32px", height: "32px", border: "none", background: "#f0f0f0",
-                  borderRadius: "50%", fontSize: "18px", cursor: "pointer", color: TEXT_LIGHT,
-                }}>×</button>
-              )}
-            </div>
-
-            {!animationVideo && (
-              <div style={{
-                fontSize: "12px", color: "#92400e", background: "#fef3c7",
-                padding: "10px 12px", borderRadius: "6px", marginBottom: "16px",
-                border: "1px solid #fde68a",
-              }}>
-                ⚠️ Heads up: Each animation takes about 1-2 minutes and costs roughly <strong>$0.40</strong>. You'll get an 8-second animated GIF you can download.
-              </div>
-            )}
-
-            {animating ? (
-              <div style={{ textAlign: "center", padding: "30px 20px" }}>
-                <div style={{
-                  width: "48px", height: "48px", margin: "0 auto 16px",
-                  border: `4px solid ${BORDER}`, borderTopColor: GREEN,
-                  borderRadius: "50%", animation: "spin 1s linear infinite",
-                }} />
-                <div style={{ fontSize: "15px", fontWeight: 600, color: TEXT, marginBottom: "8px" }}>
-                  {animationStatus || "Working…"}
-                </div>
-                <div style={{ fontSize: "12px", color: TEXT_LIGHT }}>
-                  {convertingGif
-                    ? "Almost done — converting your animation to GIF in your browser."
-                    : "Please don't close this window. Veo is rendering 8 seconds of video."}
-                </div>
-                {convertingGif && (
-                  <div style={{
-                    marginTop: "16px", height: "6px", background: BORDER, borderRadius: "3px",
-                    overflow: "hidden",
-                  }}>
-                    <div style={{
-                      height: "100%", background: GREEN, width: `${gifProgress}%`,
-                      transition: "width 0.3s",
-                    }} />
-                  </div>
-                )}
-              </div>
-            ) : animationVideo ? (
-              <div>
-                {/* Use GIF for preview if available, fall back to video */}
-                {animationVideo.gifUrl ? (
-                  <img
-                    src={animationVideo.gifUrl}
-                    alt="Animated GIF"
-                    style={{ width: "100%", borderRadius: "8px", marginBottom: "12px", display: "block" }}
-                  />
-                ) : (
-                  <video
-                    src={animationVideo.url}
-                    controls
-                    autoPlay
-                    loop
-                    style={{ width: "100%", borderRadius: "8px", marginBottom: "12px", display: "block" }}
-                  />
-                )}
-                <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginBottom: "8px", flexWrap: "wrap" }}>
-                  <button
-                    onClick={() => { setAnimationVideo(null); setAnimationPrompt(""); }}
-                    style={{
-                      padding: "10px 16px", background: WHITE, color: TEXT,
-                      border: `1px solid ${BORDER}`, borderRadius: "6px",
-                      fontWeight: 600, fontSize: "13px", cursor: "pointer",
-                    }}
-                  >
-                    🔄 Try Another
-                  </button>
-                  <button
-                    onClick={downloadAnimation}
-                    style={{
-                      padding: "10px 16px", background: GREEN, color: WHITE, border: "none",
-                      borderRadius: "6px", fontWeight: 600, fontSize: "13px", cursor: "pointer",
-                    }}
-                  >
-                    ↓ Download {animationVideo.gifUrl ? "GIF" : "Video"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Source image preview */}
-                <div style={{ marginBottom: "16px" }}>
-                  <div style={{ fontSize: "11px", fontWeight: 700, color: TEXT_LIGHT, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px" }}>
-                    Animating this image:
-                  </div>
-                  <img
-                    src={currentImg?.url}
-                    alt="Source"
-                    style={{ width: "100%", borderRadius: "6px", border: `1px solid ${BORDER}`, display: "block" }}
-                  />
-                </div>
-
-                {/* Animation presets — grouped into Subtle vs Action */}
-                <div style={{ fontSize: "11px", fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>
-                  Subtle Motion <span style={{ color: TEXT_MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· cinemagraph style, only some elements move</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
-                  {ANIMATION_PRESETS.filter(p => p.group === "subtle").map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => startAnimation(p.prompt, p.id)}
-                      disabled={animating}
-                      style={{
-                        padding: "10px 12px", border: `1px solid ${BORDER}`, borderRadius: "6px",
-                        background: activeAnimPreset === p.id ? "#e8f5e9" : WHITE,
-                        color: TEXT, fontSize: "13px", fontWeight: 600, cursor: "pointer",
-                        textAlign: "left", transition: "all 0.15s",
-                      }}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div style={{ fontSize: "11px", fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>
-                  Full Action <span style={{ color: TEXT_MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· realistic video with people / vehicles in motion</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
-                  {ANIMATION_PRESETS.filter(p => p.group === "action").map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => startAnimation(p.prompt, p.id)}
-                      disabled={animating}
-                      style={{
-                        padding: "10px 12px", border: `1px solid ${BORDER}`, borderRadius: "6px",
-                        background: activeAnimPreset === p.id ? "#e8f5e9" : WHITE,
-                        color: TEXT, fontSize: "13px", fontWeight: 600, cursor: "pointer",
-                        textAlign: "left", transition: "all 0.15s",
-                      }}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Or custom */}
-                <div style={{ fontSize: "11px", fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px" }}>
-                  Or describe your own
-                </div>
-                <textarea
-                  value={animationPrompt}
-                  onChange={e => setAnimationPrompt(e.target.value)}
-                  placeholder='e.g. "have sasquatch in a red bikini throw a trashbag into the dumpster"'
-                  style={{
-                    ...inputStyle, minHeight: "80px", resize: "vertical",
-                    marginBottom: "10px", fontFamily: "inherit",
-                  }}
-                  disabled={animating}
-                />
-                <button
-                  onClick={() => startAnimation(animationPrompt, "custom")}
-                  disabled={animating || !animationPrompt.trim()}
-                  style={{
-                    width: "100%", padding: "12px", border: "none", borderRadius: "6px",
-                    background: GREEN, color: WHITE, fontSize: "14px", fontWeight: 700,
-                    cursor: animating || !animationPrompt.trim() ? "not-allowed" : "pointer",
-                    opacity: animating || !animationPrompt.trim() ? 0.5 : 1,
-                  }}
-                >
-                  Animate with custom prompt
-                </button>
-              </>
-            )}
-
-            {animationError && (
-              <div style={{
-                marginTop: "12px", padding: "10px 12px", background: "#fff5f5",
-                border: "1px solid #f5c6cb", borderRadius: "6px", color: "#dc3545", fontSize: "13px",
-              }}>
-                {animationError}
-              </div>
-            )}
-          </div>
-        </div>
+      {/* ── ANIMATION MODAL ── */}
+      {animOpen && (
+        <AnimationModal
+          resultImg={resultImg}
+          animPrompt={animPrompt}
+          setAnimPrompt={setAnimPrompt}
+          animating={animating}
+          animStatus={animStatus}
+          animResult={animResult}
+          animError={animError}
+          gifProgress={gifProgress}
+          convertingGif={convertingGif}
+          onClose={() => { setAnimOpen(false); setAnimError(""); }}
+          onStart={startAnimation}
+          onDownload={downloadAnimation}
+          onReset={() => { setAnimResult(null); setAnimPrompt(""); setAnimError(""); }}
+        />
       )}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        /* Tablet and below — stack the two panels vertically */
-        @media (max-width: 900px) {
-          .layout-grid {
-            grid-template-columns: 1fr !important;
-            grid-template-rows: auto auto;
-          }
-          .controls-pane {
-            border-right: none !important;
-            border-bottom: 1px solid #e0e0e0;
-            max-height: none !important;
-            overflow-y: visible !important;
-          }
-          .preview-pane {
-            max-height: none !important;
-            overflow-y: visible !important;
-          }
-        }
-
-        /* Phone — tighter padding */
-        @media (max-width: 480px) {
-          .controls-pane, .preview-pane {
-            padding: 16px !important;
-          }
+        /* Make sure on narrow viewports the layout still tries to stay no-scroll */
+        @media (max-width: 720px) {
+          /* On very small screens we can't truly avoid all scrolling,
+             but we keep the right panel scrollable internally and the
+             outer page locked. */
         }
       `}</style>
     </div>
   );
 }
+
+/* ──────────────────────────────────────────────
+   PREVIEW CANVAS — left side
+   ────────────────────────────────────────────── */
+
+function PreviewCanvas({
+  companyName, phone, bodyColor, accentColor, sizeLabel, sceneId,
+  generating, resultImg, animResult, errorMsg,
+  onClearResult, onDownload, onDownloadAnimation, onAnimate,
+}) {
+  // If we have an animation, show that
+  if (animResult && animResult.gifUrl) {
+    return (
+      <ResultDisplay
+        src={animResult.gifUrl}
+        alt="Animated dumpster"
+        label="ANIMATED"
+        onClear={onClearResult}
+        onDownload={onDownloadAnimation}
+        downloadLabel="Download GIF"
+      />
+    );
+  }
+
+  // If we have a generated image, show that full-bleed
+  if (resultImg) {
+    return (
+      <ResultDisplay
+        src={resultImg.url}
+        alt="Generated dumpster"
+        label={sceneId.toUpperCase()}
+        onClear={onClearResult}
+        onDownload={onDownload}
+        onAnimate={onAnimate}
+        downloadLabel="Download"
+      />
+    );
+  }
+
+  // Otherwise show live preview mockup
+  return (
+    <div style={{ width: "100%", maxWidth: "720px", position: "relative" }}>
+      <div style={{
+        background: C.white,
+        borderRadius: "16px",
+        border: `1px solid ${C.mist}`,
+        padding: "40px 24px",
+        position: "relative",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+      }}>
+        {/* Scene label */}
+        <div style={{
+          position: "absolute", top: "16px", left: "16px",
+          fontSize: "10px", fontWeight: 700, color: C.muted,
+          letterSpacing: "0.1em",
+        }}>
+          {sceneId.toUpperCase()}
+        </div>
+
+        {/* Live SVG dumpster */}
+        <DumpsterSVG
+          companyName={companyName}
+          phone={phone}
+          bodyColor={bodyColor}
+          accentColor={accentColor}
+          sizeLabel={sizeLabel}
+        />
+
+        {/* Caption */}
+        <div style={{
+          textAlign: "center", fontSize: "12px", color: C.muted, marginTop: "16px",
+        }}>
+          Live preview — generate when it looks right
+        </div>
+      </div>
+
+      {/* Generating overlay */}
+      {generating && (
+        <div style={{
+          position: "absolute", inset: 0,
+          background: "rgba(255,255,255,0.85)",
+          borderRadius: "16px",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexDirection: "column", gap: "12px",
+          animation: "fadeIn 0.2s",
+        }}>
+          <div style={{
+            width: "40px", height: "40px",
+            border: `4px solid ${C.mist}`,
+            borderTopColor: C.green,
+            borderRadius: "50%",
+            animation: "spin 1s linear infinite",
+          }} />
+          <div style={{ fontSize: "14px", fontWeight: 600, color: C.ink }}>
+            Generating your dumpster…
+          </div>
+          <div style={{ fontSize: "12px", color: C.muted }}>
+            Usually 10-20 seconds
+          </div>
+        </div>
+      )}
+
+      {/* Error message */}
+      {errorMsg && !generating && (
+        <div style={{
+          marginTop: "16px",
+          padding: "10px 14px",
+          background: "#fef2f2",
+          border: `1px solid #fecaca`,
+          borderRadius: "8px",
+          fontSize: "13px",
+          color: C.danger,
+        }}>
+          {errorMsg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultDisplay({ src, alt, label, onClear, onDownload, onAnimate, downloadLabel }) {
+  return (
+    <div style={{
+      width: "100%", maxWidth: "900px", position: "relative",
+      animation: "fadeIn 0.3s",
+    }}>
+      <div style={{
+        background: C.white,
+        borderRadius: "16px",
+        border: `1px solid ${C.mist}`,
+        overflow: "hidden",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+        position: "relative",
+      }}>
+        {/* Scene label */}
+        <div style={{
+          position: "absolute", top: "16px", left: "16px",
+          fontSize: "10px", fontWeight: 700, color: C.white,
+          letterSpacing: "0.1em",
+          background: "rgba(0,0,0,0.55)",
+          padding: "4px 10px", borderRadius: "999px",
+          backdropFilter: "blur(4px)",
+          zIndex: 2,
+        }}>
+          {label}
+        </div>
+
+        <img src={src} alt={alt} style={{
+          width: "100%", display: "block", maxHeight: "70vh", objectFit: "contain",
+          background: C.cream,
+        }} />
+      </div>
+
+      {/* Action bar */}
+      <div style={{
+        display: "flex", gap: "8px", marginTop: "12px", justifyContent: "center",
+        flexWrap: "wrap",
+      }}>
+        <button onClick={onClear} style={secondaryBtn}>
+          ← Back to preview
+        </button>
+        {onAnimate && (
+          <button onClick={onAnimate} style={secondaryBtn}>
+            🎬 Animate
+          </button>
+        )}
+        <button onClick={onDownload} style={primaryBtn}>
+          ↓ {downloadLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────
+   LIVE DUMPSTER SVG PREVIEW
+   ────────────────────────────────────────────── */
+
+function DumpsterSVG({ companyName, phone, bodyColor, accentColor, sizeLabel }) {
+  // Determine if we need a dark stroke (very light bodies need outline for visibility)
+  const isVeryLight = (() => {
+    const hex = bodyColor.replace("#", "");
+    if (hex.length !== 6) return false;
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return (r + g + b) / 3 > 220;
+  })();
+
+  const strokeColor = isVeryLight ? "#cbd5e1" : "transparent";
+
+  return (
+    <svg viewBox="0 0 500 280" style={{ width: "100%", height: "auto", maxHeight: "360px" }}>
+      {/* Subtle shadow ellipse */}
+      <ellipse cx="250" cy="240" rx="170" ry="10" fill="rgba(0,0,0,0.08)" />
+
+      {/* Dumpster body */}
+      <g>
+        <path
+          d="M100 130 L120 230 L380 230 L400 130 Z"
+          fill={bodyColor}
+          stroke={strokeColor}
+          strokeWidth="1.5"
+        />
+        <path
+          d="M100 130 L120 125 L380 125 L400 130 Z"
+          fill={bodyColor}
+          stroke={strokeColor}
+          strokeWidth="1.5"
+        />
+
+        {/* Vertical reinforcement lines */}
+        {[160, 210, 260, 310, 360].map(x => (
+          <line key={x} x1={x} y1={130} x2={x} y2={228}
+            stroke={isVeryLight ? "#cbd5e1" : "rgba(0,0,0,0.15)"}
+            strokeWidth="1"
+          />
+        ))}
+
+        {/* Company name */}
+        <text x="250" y="170" textAnchor="middle"
+          fontFamily="system-ui, sans-serif"
+          fontSize={companyName.length > 14 ? "18" : "24"}
+          fontWeight="800"
+          fill={accentColor}
+          letterSpacing="0.02em"
+        >
+          {(companyName || "ABC DUMPSTERS").toUpperCase()}
+        </text>
+
+        {/* Phone */}
+        <text x="250" y="195" textAnchor="middle"
+          fontFamily="system-ui, sans-serif" fontSize="13" fontWeight="700"
+          fill={accentColor}
+        >
+          {phone || ""}
+        </text>
+
+        {/* Size badge */}
+        <rect x="220" y="205" width="60" height="18" rx="2" fill={C.ink} />
+        <text x="250" y="218" textAnchor="middle"
+          fontFamily="system-ui, sans-serif" fontSize="11" fontWeight="800"
+          fill={C.white}
+        >
+          {sizeLabel.toUpperCase()}
+        </text>
+      </g>
+
+      {/* Wheels */}
+      <circle cx="155" cy="232" r="6" fill="#1a1a1a" />
+      <circle cx="345" cy="232" r="6" fill="#1a1a1a" />
+    </svg>
+  );
+}
+
+/* ──────────────────────────────────────────────
+   ANIMATION MODAL
+   ────────────────────────────────────────────── */
+
+function AnimationModal({
+  resultImg, animPrompt, setAnimPrompt,
+  animating, animStatus, animResult, animError,
+  gifProgress, convertingGif,
+  onClose, onStart, onDownload, onReset,
+}) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 200,
+      background: "rgba(15, 23, 42, 0.6)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "20px",
+      animation: "fadeIn 0.2s",
+    }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: C.white,
+          borderRadius: "16px",
+          maxWidth: "560px", width: "100%",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          padding: "24px",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
+        }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <h2 style={{ fontSize: "18px", fontWeight: 700, color: C.ink, margin: 0 }}>
+            🎬 Animate Your Dumpster
+          </h2>
+          <button onClick={onClose} style={{
+            background: "transparent", border: "none", fontSize: "24px",
+            color: C.muted, cursor: "pointer", padding: "4px 8px",
+          }}>×</button>
+        </div>
+
+        {animating ? (
+          <div style={{ textAlign: "center", padding: "30px 20px" }}>
+            <div style={{
+              width: "48px", height: "48px", margin: "0 auto 16px",
+              border: `4px solid ${C.mist}`, borderTopColor: C.green,
+              borderRadius: "50%", animation: "spin 1s linear infinite",
+            }} />
+            <div style={{ fontSize: "15px", fontWeight: 600, color: C.ink, marginBottom: "8px" }}>
+              {animStatus || "Working…"}
+            </div>
+            <div style={{ fontSize: "12px", color: C.muted }}>
+              {convertingGif
+                ? "Almost done — converting your animation to GIF."
+                : "Please don't close this window. Veo is rendering 8 seconds of video."}
+            </div>
+            {convertingGif && (
+              <div style={{
+                marginTop: "16px", height: "6px", background: C.mist, borderRadius: "3px",
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  height: "100%", background: C.green, width: `${gifProgress}%`,
+                  transition: "width 0.3s",
+                }} />
+              </div>
+            )}
+          </div>
+        ) : animResult && animResult.gifUrl ? (
+          <div>
+            <img src={animResult.gifUrl} alt="Animated GIF"
+              style={{ width: "100%", borderRadius: "8px", marginBottom: "12px" }}
+            />
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button onClick={onReset} style={secondaryBtn}>🔄 Try Another</button>
+              <button onClick={onDownload} style={primaryBtn}>↓ Download GIF</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {resultImg && (
+              <div style={{ marginBottom: "16px" }}>
+                <div style={{
+                  fontSize: "11px", fontWeight: 700, color: C.muted,
+                  textTransform: "uppercase", letterSpacing: "0.08em",
+                  marginBottom: "6px",
+                }}>Animating this image:</div>
+                <img src={resultImg.url} alt="Source"
+                  style={{ width: "100%", borderRadius: "8px", maxHeight: "180px", objectFit: "cover" }}
+                />
+              </div>
+            )}
+
+            <div style={{
+              fontSize: "12px", color: "#92400e", background: "#fef3c7",
+              padding: "10px 12px", borderRadius: "6px", marginBottom: "16px",
+              border: "1px solid #fde68a",
+            }}>
+              ⚠️ Each animation takes ~1-2 minutes and costs about <strong>$0.40</strong>. You'll get an 8-second GIF.
+            </div>
+
+            {/* Subtle Motion */}
+            <div style={{
+              fontSize: "11px", fontWeight: 700, color: C.green, marginBottom: "8px",
+              textTransform: "uppercase", letterSpacing: "0.08em",
+            }}>
+              Subtle Motion <span style={{ color: C.muted, textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>· cinemagraph style</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginBottom: "16px" }}>
+              {ANIM_PRESETS.subtle.map(p => (
+                <button key={p.id}
+                  onClick={() => onStart(p.prompt)}
+                  style={{
+                    padding: "10px",
+                    background: C.white,
+                    border: `1px solid ${C.mist}`,
+                    borderRadius: "6px",
+                    fontSize: "13px", fontWeight: 600, color: C.ink,
+                    cursor: "pointer", textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = C.green}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = C.mist}
+                >
+                  {p.emoji} {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Full Action */}
+            <div style={{
+              fontSize: "11px", fontWeight: 700, color: C.green, marginBottom: "8px",
+              textTransform: "uppercase", letterSpacing: "0.08em",
+            }}>
+              Full Action <span style={{ color: C.muted, textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>· people / vehicles in motion</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginBottom: "16px" }}>
+              {ANIM_PRESETS.action.map(p => (
+                <button key={p.id}
+                  onClick={() => onStart(p.prompt)}
+                  style={{
+                    padding: "10px",
+                    background: C.white,
+                    border: `1px solid ${C.mist}`,
+                    borderRadius: "6px",
+                    fontSize: "13px", fontWeight: 600, color: C.ink,
+                    cursor: "pointer", textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = C.green}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = C.mist}
+                >
+                  {p.emoji} {p.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{
+              fontSize: "11px", fontWeight: 700, color: C.green, marginBottom: "6px",
+              textTransform: "uppercase", letterSpacing: "0.08em",
+            }}>
+              Or describe your own
+            </div>
+            <textarea
+              value={animPrompt}
+              onChange={(e) => setAnimPrompt(e.target.value)}
+              rows={2}
+              placeholder='e.g. "have a worker in a red hat toss a trash bag in"'
+              style={{
+                width: "100%", padding: "8px 10px",
+                border: `1px solid ${C.mist}`, borderRadius: "6px",
+                fontSize: "13px", fontFamily: F.body,
+                resize: "none", outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+
+            {animError && (
+              <div style={{
+                marginTop: "10px", padding: "8px 12px",
+                background: "#fef2f2", border: `1px solid #fecaca`,
+                borderRadius: "6px", fontSize: "12px", color: C.danger,
+              }}>
+                {animError}
+              </div>
+            )}
+
+            <button
+              onClick={() => onStart()}
+              disabled={!animPrompt.trim()}
+              style={{
+                width: "100%", marginTop: "12px",
+                padding: "12px", borderRadius: "8px", border: "none",
+                background: !animPrompt.trim() ? C.muted : C.green,
+                color: C.white,
+                fontSize: "14px", fontWeight: 600,
+                cursor: !animPrompt.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              Animate with custom prompt
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────
+   SMALL UI COMPONENTS
+   ────────────────────────────────────────────── */
+
+function Label({ children, small, style }) {
+  return (
+    <div style={{
+      fontSize: small ? "10px" : "11px",
+      fontWeight: 700,
+      color: C.muted,
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      marginBottom: "6px",
+      ...style,
+    }}>{children}</div>
+  );
+}
+
+function Input({ value, onChange, placeholder, type = "text" }) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{
+        width: "100%",
+        padding: "8px 10px",
+        border: `1px solid ${C.mist}`,
+        borderRadius: "6px",
+        fontSize: "13px",
+        fontFamily: F.body,
+        background: C.white,
+        color: C.ink,
+        outline: "none",
+        boxSizing: "border-box",
+      }}
+      onFocus={(e) => e.target.style.borderColor = C.green}
+      onBlur={(e) => e.target.style.borderColor = C.mist}
+    />
+  );
+}
+
+function ColorField({ label, value, onChange }) {
+  const upperValue = value.toUpperCase();
+  return (
+    <label style={{
+      display: "flex", alignItems: "center", gap: "8px",
+      padding: "6px 10px",
+      border: `1px solid ${C.mist}`,
+      borderRadius: "6px",
+      cursor: "pointer",
+      background: C.white,
+    }}>
+      <input type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value.toUpperCase())}
+        style={{
+          width: "28px", height: "28px",
+          border: "none", padding: 0, cursor: "pointer",
+          background: "transparent",
+        }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: C.ink }}>{label}</div>
+        <div style={{ fontSize: "10px", color: C.muted, fontFamily: "monospace" }}>
+          {upperValue}
+        </div>
+      </div>
+    </label>
+  );
+}
+
+function LogoUpload({ logo, onChange, onClear }) {
+  const inputRef = useRef();
+  if (logo) {
+    return (
+      <div style={{
+        padding: "8px 10px",
+        border: `1px solid ${C.mist}`,
+        borderRadius: "6px",
+        display: "flex", alignItems: "center", gap: "8px",
+        background: C.cream,
+      }}>
+        <img src={logo} alt="logo" style={{
+          width: "24px", height: "24px", objectFit: "contain",
+          background: C.white, borderRadius: "4px",
+        }} />
+        <span style={{ flex: 1, fontSize: "12px", color: C.ink }}>Logo added</span>
+        <button onClick={onClear} style={{
+          background: "transparent", border: "none",
+          color: C.danger, fontSize: "12px", fontWeight: 600,
+          cursor: "pointer",
+        }}>Remove</button>
+      </div>
+    );
+  }
+  return (
+    <>
+      <input type="file" ref={inputRef} accept="image/*"
+        onChange={onChange} style={{ display: "none" }} />
+      <button
+        onClick={() => inputRef.current?.click()}
+        style={{
+          width: "100%", padding: "8px 10px",
+          border: `1px dashed ${C.mist}`, borderRadius: "6px",
+          background: C.greenLight, color: C.green,
+          fontSize: "12px", fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        + Add logo (optional)
+      </button>
+    </>
+  );
+}
+
+function DimensionInput({ label, value, onChange }) {
+  return (
+    <div>
+      <div style={{ fontSize: "10px", color: C.muted, fontWeight: 600, marginBottom: "2px" }}>{label}</div>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+        style={{
+          width: "100%", padding: "6px 8px",
+          border: `1px solid ${C.mist}`, borderRadius: "4px",
+          fontSize: "13px", textAlign: "center",
+          background: C.white, color: C.ink,
+          boxSizing: "border-box",
+          outline: "none",
+        }}
+      />
+    </div>
+  );
+}
+
+function pillStyle(active) {
+  return {
+    padding: "6px 12px",
+    border: `1px solid ${active ? C.green : C.mist}`,
+    background: active ? C.green : C.white,
+    color: active ? C.white : C.ink,
+    borderRadius: "999px",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "all 0.15s",
+  };
+}
+
+const primaryBtn = {
+  padding: "10px 18px",
+  background: C.green,
+  color: C.white,
+  border: "none",
+  borderRadius: "8px",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const secondaryBtn = {
+  padding: "10px 16px",
+  background: C.white,
+  color: C.ink,
+  border: `1px solid ${C.mist}`,
+  borderRadius: "8px",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
