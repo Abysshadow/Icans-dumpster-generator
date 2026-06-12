@@ -150,19 +150,36 @@ export default function App() {
       : `${resolvedSize.dims} feet (a ${resolvedSize.yd} yard roll-off dumpster)`;
 
     const hasLogo = !!logo;
+    const lengthFt = useCustom ? customL : resolvedSize.dims.split(" × ")[0];
+    const heightFt = useCustom ? customH : resolvedSize.dims.split(" × ")[2];
+
+    // ── Text block on the dumpster panel ──
+    // Phrased as ONE single stacked element with EXACTLY ONE occurrence of the
+    // company name to prevent the model from duplicating the brand name.
+    const textBlock = hasLogo
+      ? `On the center of the front-facing side panel, paint EXACTLY ONE branded text block with three stacked lines (and nothing else):
+  Line 1: the provided logo image (small, centered above the text)
+  Line 2: the company name "${companyName}" in clean bold sans-serif lettering, color ${accentColor}
+  Line 3: the phone number "${phone}" in smaller but still readable sans-serif lettering, color ${accentColor}
+  Below those three lines, a small rectangular badge containing the text "${resolvedSize.label.toUpperCase()}" in dark text on a light background.
+
+CRITICAL: The company name "${companyName}" must appear EXACTLY ONCE on the entire dumpster. Do NOT repeat the name, do NOT add an additional logo word-mark, do NOT echo the brand in multiple places. One single branded block only.`
+      : `On the center of the front-facing side panel, paint EXACTLY ONE branded text block with two stacked lines (and nothing else):
+  Line 1: the company name "${companyName}" in clean bold sans-serif lettering, color ${accentColor}
+  Line 2: the phone number "${phone}" in smaller but still readable sans-serif lettering, color ${accentColor}
+  Below those two lines, a small rectangular badge containing the text "${resolvedSize.label.toUpperCase()}" in dark text on a light background.
+
+CRITICAL: The company name "${companyName}" must appear EXACTLY ONCE on the entire dumpster. Do NOT repeat the name, do NOT add a separate logo word-mark above it, do NOT show the brand name in multiple places or styles. One single branded text block only — that's it.`;
 
     return [
       `A photorealistic image of a single ${sizeDesc} roll-off dumpster.`,
       `The dumpster body is painted ${bodyColor}.`,
-      hasLogo
-        ? `The provided logo image is placed on the front-facing side panel of the dumpster, well-centered, with the company name "${companyName}" rendered in clean bold sans-serif lettering directly below the logo in the color ${accentColor}.`
-        : `The text "${companyName}" is painted on the front-facing side panel in clean bold sans-serif lettering, color ${accentColor}, well-centered.`,
-      `Below that, the phone number "${phone}" is shown in smaller but still readable sans-serif lettering, same color ${accentColor}.`,
-      `Below that, a clean rectangular badge with the text "${resolvedSize.label.toUpperCase()}" displayed in dark text on a light background.`,
+      ``,
+      textBlock,
       ``,
       `Scene: ${sceneText}`,
       ``,
-      `Show architectural-style measuring lines OUTSIDE the dumpster — thin arrows along the bottom showing length, and a vertical arrow on the right showing height — with the measurements written as plain text labels (for example "${useCustom ? customL : resolvedSize.dims.split(" × ")[0]} FT" and "${useCustom ? customH : resolvedSize.dims.split(" × ")[2]} FT"). The measurements must be OUTSIDE the dumpster, never painted on it.`,
+      `Show architectural-style measuring lines OUTSIDE the dumpster — thin arrows along the bottom showing length, and a vertical arrow on the right showing height — with the measurements written as plain text labels (for example "${lengthFt} FT" for the length and "${heightFt} FT" for the height). The measurements must be drawn in the empty space around the dumpster, never painted onto the dumpster itself.`,
       ``,
       `The dumpster should look real and heavy, sitting flat on the ground. Wide aspect ratio, 16:9, professional commercial photography.`,
     ].join("\n");
@@ -394,16 +411,14 @@ export default function App() {
      ────────────────────────────────────────────── */
 
   return (
-    <div style={{
-      height: "100vh", width: "100vw", overflow: "hidden",
-      display: "flex", flexDirection: "column",
+    <div className="app-root" style={{
       fontFamily: F.body, color: C.ink, background: C.cream,
     }}>
       {/* ── HEADER ── */}
-      <header style={{
+      <header className="app-header" style={{
         flex: "0 0 auto",
         height: "56px",
-        padding: "0 24px",
+        padding: "0 16px",
         background: C.white,
         borderBottom: `1px solid ${C.mist}`,
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -448,14 +463,14 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── BODY (preview + controls, no scroll) ── */}
-      <div style={{
+      {/* ── BODY (preview + controls) ── */}
+      <div className="app-body" style={{
         flex: "1 1 auto",
         display: "flex",
-        minHeight: 0,    // critical: lets children shrink correctly
+        minHeight: 0,    // critical: lets children shrink correctly on desktop
       }}>
         {/* LEFT: Preview */}
-        <div style={{
+        <div className="preview-pane" style={{
           flex: "1 1 auto",
           minWidth: 0,
           padding: "24px",
@@ -483,7 +498,7 @@ export default function App() {
         </div>
 
         {/* RIGHT: Controls */}
-        <aside style={{
+        <aside className="controls-pane" style={{
           flex: "0 0 380px",
           minWidth: "320px",
           maxWidth: "440px",
@@ -494,7 +509,7 @@ export default function App() {
           minHeight: 0,
         }}>
           {/* Scrollable inner panel (only if needed) */}
-          <div style={{
+          <div className="controls-scroll" style={{
             flex: "1 1 auto",
             overflowY: "auto",
             padding: "20px 24px",
@@ -590,7 +605,7 @@ export default function App() {
           </div>
 
           {/* GENERATE BUTTON (fixed bottom of panel) */}
-          <div style={{
+          <div className="generate-footer" style={{
             flex: "0 0 auto",
             padding: "16px 24px",
             borderTop: `1px solid ${C.mist}`,
@@ -643,11 +658,53 @@ export default function App() {
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        /* Make sure on narrow viewports the layout still tries to stay no-scroll */
-        @media (max-width: 720px) {
-          /* On very small screens we can't truly avoid all scrolling,
-             but we keep the right panel scrollable internally and the
-             outer page locked. */
+        /* ─── DESKTOP (default): locked viewport, side-by-side ─── */
+        .app-root {
+          height: 100vh;
+          width: 100vw;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+
+        /* ─── MOBILE / NARROW: allow scrolling, stack vertically ─── */
+        @media (max-width: 900px) {
+          .app-root {
+            height: auto;
+            min-height: 100vh;
+            overflow: visible;
+          }
+          .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+          }
+          .app-body {
+            flex-direction: column !important;
+          }
+          .preview-pane {
+            order: 2;
+            padding: 16px !important;
+            min-height: 50vh;
+          }
+          .controls-pane {
+            order: 1;
+            flex: 1 1 auto !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            border-left: none !important;
+            border-bottom: 1px solid #e2e8f0;
+          }
+          .controls-scroll {
+            overflow-y: visible !important;
+            padding: 16px !important;
+          }
+          .generate-footer {
+            position: sticky;
+            bottom: 0;
+            z-index: 40;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
+          }
         }
       `}</style>
     </div>
